@@ -16,6 +16,8 @@ This is part of a project aiming to explore the effects of affective interaction
     - Client: Captures audio via microphone and handles scene management. It sends voice data and current game state (e.g., "Player near Memory #3") to the server via WebSockets (Socket.IO).
     - Server: Orchestrates the AI pipeline. It receives the audio, performs Speech-to-Text (STT) transcription, feeds the text and context into the Large Language Model (Gemini), receives the text response, converts it via Text-to-Speech (TTS), and streams the audio back to the client.
 
+    ![AI Chatbot System Overview](fig_ai_chatbot_system_overview.png)
+
 2. **Functions and Mechanics**:
     The chatbot operates in two distinct modes:
     - The Emotional Primer (The Hint): As the player approaches a memory fragment, the AI autonomously delivers a concise, evocative prompt to set the mood. For example, "This is where he left... the silence is so loud here."
