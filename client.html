@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Assistant - Memory Link</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .chat-container {
+            width: 100%;
+            max-width: 600px;
+            background: white;
+            border-radius: 1rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            padding: 1.5rem;
+        }
+        .mic-button {
+            transition: all 0.2s;
+            transform-origin: center;
+        }
+        .mic-button:hover {
+            box-shadow: 0 8px 15px rgba(239, 68, 68, 0.5);
+            transform: scale(1.05);
+        }
+        .recording {
+            animation: pulse 1.5s infinite;
+        }
+        .mic-active {
+            background-color: #10b981 !important; /* Green when mic is ready */
+        }
+        .scenario-button {
+            transition: all 0.1s;
+            background-color: #e0e7ff; 
+            color: #4338ca; 
+        }
+        .scenario-button.active {
+            background-color: #4f46e5; 
+            color: white;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        .scenario-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">Voice Assistant (Memory Link)</h1>
+        
+        <div class="mb-6 p-3 rounded-lg bg-gray-100 border border-gray-200">
+            <h2 class="text-base font-semibold text-gray-700 mb-2">Select Active Memory:</h2>
+            <div id="scenario-panel" class="grid grid-cols-10 gap-1">
+                <button data-memory-id="1" class="scenario-button p-2 rounded text-xs font-semibold hover:bg-indigo-400 hover:text-white">M-1</button>
+                <button data-memory-id="2" class="scenario-button p-2 rounded text-xs font-semibold hover:bg-indigo-400 hover:text-white">M-2</button>
+                <button data-memory-id="3" class="scenario-button p-2 rounded text-xs font-semibold hover:bg-indigo-400 hover:text-white">M-3</button>
+                <button data-memory-id="4" class="scenario-button p-2 rounded text-xs font-semibold hover:bg-indigo-400 hover:text-white">M-4</button>
+                <button data-memory-id="5" class="scenario-button p-2 rounded text-xs font-semibold hover:bg-indigo-400 hover:text-white">M-5</button>
+                <button data-memory-id="6" class="scenario-button p-2 rounded text-xs font-semibold hover:bg-indigo-400 hover:text-white">M-6</button>
+                <button data-memory-id="7" class="scenario-button p-2 rounded text-xs font-semibold hover:bg-indigo-400 hover:text-white">M-7</button>
+                <button data-memory-id="8" class="scenario-button p-2 rounded text-xs font-semibold hover:bg-indigo-400 hover:text-white">M-8</button>
+                <button data-memory-id="9" class="scenario-button p-2 rounded text-xs font-semibold hover:bg-indigo-400 hover:text-white">M-9</button>
+                <button data-memory-id="10" class="scenario-button p-2 rounded text-xs font-semibold hover:bg-indigo-400 hover:text-white">M-10</button>
+            </div>
+            <p id="active-memory-display" class="mt-2 text-sm text-center text-gray-600">No Memory Active</p>
+        </div>
+
+        <!-- Status and Message Area -->
+        <div id="status-message" class="text-center mb-6 p-3 rounded-lg bg-indigo-100 text-indigo-800 font-semibold">
+            Connecting to Server...
+        </div>
+
+        <!-- Conversation History -->
+        <div id="conversation-history" class="h-64 overflow-y-auto space-y-4 mb-6 p-3 bg-gray-50 rounded-lg border border-gray-200">
+            <!-- Messages will appear here -->
+        </div>
+
+        <!-- Transcription/User Input Display -->
+        <div class="mb-6 p-4 rounded-lg border-2 border-dashed border-gray-300 bg-white">
+            <h2 class="text-lg font-semibold text-gray-700 mb-2">You Said:</h2>
+            <p id="user-transcript" class="text-gray-900 italic min-h-[1.5rem]"></p>
+        </div>
+        
+        <!-- Microphone Button -->
+        <div class="flex justify-center">
+            <button id="micButton" 
+                    class="mic-button w-20 h-20 bg-gray-400 rounded-full flex items-center justify-center text-white focus:outline-none" 
+                    title="Initialize Microphone"
+                    disabled>
+                <svg id="mic-icon" class="w-10 h-10" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zM5.535 8.465A5.003 5.003 0 0010 17h.001a5.003 5.003 0 004.464-8.535l1.415 1.415a7.003 7.003 0 01-11.378-.28L5.535 8.465zM15 17h-2a1 1 0 110-2h2a1 1 0 110 2z" clip-rule="evenodd"></path></svg>
+                <span id="recording-status" class="hidden absolute mt-20 text-sm font-medium text-red-600">Recording...</span>
+            </button>
+        </div>
+
+        <!-- Removed: Audio Player for Agent Response (Using Web Audio API now) -->
+    </div>
+
+    <script>
+        // --- Configuration ---
+        const SERVER_URL = 'http://127.0.0.1:5000'; 
+        const TTS_SAMPLE_RATE = 24000;
+        const CHAT_HISTORY_LIMIT = 6; 
+        const INPUT_MIME_TYPE = 'audio/webm;codecs=opus';
+
+        // --- DOM Elements ---
+        const micButton = document.getElementById('micButton');
+        const statusMessage = document.getElementById('status-message');
+        const conversationHistory = document.getElementById('conversation-history');
+        const userTranscript = document.getElementById('user-transcript');
+        const scenarioPanel = document.getElementById('scenario-panel');
+        const activeMemoryDisplay = document.getElementById('active-memory-display');
+        const scenarioButtons = scenarioPanel.querySelectorAll('button');
+        const usedAudioUrls = new Set(); 
+        
+        // --- State Variables ---
+        let socket;
+        let mediaRecorder;
+        let isRecording = false;
+        let microphoneStream = null; 
+        let audioContext = null;
+        let isRecordingViaButton = false;
+        let micInitialized = false;
+        let activeMemoryId = null; // Tracks the currently active memory ID
+
+        async function initMicrophone() {
+            try {
+                // 1. Initialize Audio Context (Standard Autoplay Unlock Method)
+                if (!audioContext) {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                
+                // 2. Resume Context if suspended 
+                if (audioContext.state === 'suspended') {
+                    await audioContext.resume();
+                    console.log("AudioContext resumed on initial click.");
+                }
+                
+                // 3. Request Microphone Access and Keep Stream
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                microphoneStream = stream; 
+                
+                // 4. Prepare the recorder
+                mediaRecorder = new MediaRecorder(microphoneStream, { mimeType: INPUT_MIME_TYPE });
+                setupRecorderEvents();
+                
+                // 5. Update UI to ready state
+                updateStatus('Ready (Hold button or spacebar to record)');
+                micButton.classList.add('bg-red-500'); 
+                micButton.classList.remove('bg-gray-400');
+                
+                // 6. Remove initialization listener and add main recording listeners
+                micButton.removeEventListener('click', initMicrophone);
+                addHoldToTalkListeners();
+                
+                // 7. Mark mic as initialized
+                micInitialized = true;
+                
+            } catch (err) {
+                console.error('Mic Access Error:', err);
+                updateStatus('Microphone Access Denied. Refresh and allow access.', true);
+            }
+        }
+        
+        function startRecording() {
+            if (isRecording || !mediaRecorder || mediaRecorder.state === 'recording' || micButton.disabled) return;
+            if (!microphoneStream) {
+                 updateStatus('Please click to initialize microphone first.', true);
+                 return;
+            }
+            userTranscript.textContent = 'Listening...';
+            
+            // Send the active memory ID with the stream start event
+            // socket.emit('start_stream', { format: 'webm/opus' });
+            socket.emit('start_stream', { 
+                format: 'webm/opus',
+                memory_id: activeMemoryId // Pass the active ID
+            });
+            
+            mediaRecorder.start(100); 
+            isRecording = true;
+            micButton.classList.add('recording');
+            document.getElementById('recording-status').classList.remove('hidden');
+            updateStatus('Recording...');
+        }
+
+        function stopRecording() {
+            if (!isRecording || !mediaRecorder || mediaRecorder.state === 'inactive') return;
+            mediaRecorder.stop(); 
+            socket.emit('stop_stream', {});
+            isRecording = false;
+            micButton.classList.remove('recording');
+            document.getElementById('recording-status').classList.add('hidden');
+            updateStatus('Processing...');
+        }
+
+        function setupRecorderEvents() {
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0 && socket.connected) {
+                    event.data.arrayBuffer().then(buffer => {
+                        socket.emit('message', buffer);
+                    });
+                }
+            };
+        }
+        
+        function addHoldToTalkListeners() {
+            micButton.addEventListener('mousedown', (e) => {
+                isRecordingViaButton = true;
+                startRecording();
+            });
+            
+            document.body.addEventListener('mouseup', (e) => {
+                if (isRecordingViaButton) {
+                    isRecordingViaButton = false;
+                    stopRecording();
+                }
+            });
+
+            micButton.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                isRecordingViaButton = true;
+                startRecording();
+            });
+            
+            document.body.addEventListener('touchend', (e) => {
+                if (isRecordingViaButton) {
+                    isRecordingViaButton = false;
+                    stopRecording();
+                }
+            });
+
+            document.addEventListener('keydown', (e) => {
+                // Only handle if mic is initialized and spacebar is pressed
+                if (e.code === 'Space' && micInitialized && !e.repeat) {
+                    e.preventDefault();
+                    startRecording();
+                }
+            });
+
+            document.addEventListener('keyup', (e) => {
+                if (e.code === 'Space' && micInitialized) {
+                    e.preventDefault();
+                    stopRecording();
+                }
+            });
+        }
+        
+        function playAudioFromUrl(audioUrl, estimatedDuration) {
+            console.log(`Playing audio from URL: ${audioUrl}, estimated duration: ${estimatedDuration}s`);
+            if (usedAudioUrls.size > 10) { 
+                const oldestUrl = Array.from(usedAudioUrls)[0];
+                URL.revokeObjectURL(oldestUrl);
+                usedAudioUrls.delete(oldestUrl);
+            }
+            usedAudioUrls.add(audioUrl);
+            
+            const audio = new Audio(audioUrl);
+            micButton.disabled = true;
+            updateStatus('Agent Speaking...');
+            
+            // Add event listeners for debugging
+            audio.addEventListener('loadstart', () => {
+                console.log("Audio loading started");
+            });
+            
+            audio.addEventListener('loadeddata', () => {
+                console.log("Audio data loaded, duration:", audio.duration);
+            });
+            
+            audio.addEventListener('canplay', () => {
+                console.log("Audio can play");
+            });
+            
+            audio.addEventListener('canplaythrough', () => {
+                console.log("Audio can play through");
+            });
+            
+            audio.addEventListener('timeupdate', () => {
+                console.log(`Audio progress: ${audio.currentTime.toFixed(2)} / ${audio.duration.toFixed(2)}`);
+            });
+            
+            audio.addEventListener('ended', () => {
+                console.log("Audio playback completed");
+                micButton.disabled = false;
+                updateStatus('Ready (Hold button or spacebar to record)');
+            });
+            
+            audio.addEventListener('error', (e) => {
+                console.error("Audio error:", e);
+                console.error("Audio error details:", audio.error);
+                updateStatus("Error playing audio: " + (audio.error?.message || 'Unknown error'), true);
+                micButton.disabled = false;
+            });
+            
+            // Try to play
+            audio.play().then(() => {
+                console.log("Audio playback started successfully");
+                console.log("Actual audio duration:", audio.duration);
+            }).catch(error => {
+                console.error("Audio play failed:", error);
+                updateStatus("Click to play audio", true);
+                
+                // Add visible audio player as fallback
+                audio.controls = true;
+                audio.style.width = '100%';
+                audio.style.marginTop = '10px';
+                audio.style.padding = '5px';
+                audio.style.border = '1px solid #ccc';
+                audio.style.borderRadius = '5px';
+                
+                const container = document.querySelector('.chat-container');
+                // Remove any existing audio player
+                const existingAudio = container.querySelector('audio');
+                if (existingAudio) {
+                    existingAudio.remove();
+                }
+                container.appendChild(audio);
+                micButton.disabled = false;
+            });
+        }
+        
+        function setupSocket() {
+            socket = io(SERVER_URL, { 
+                transports: ['websocket', 'polling']
+            }); 
+
+            socket.on('connect', () => {
+                updateStatus('Connected to server. Click the microphone button to initialize audio.');
+                micButton.disabled = false;
+                micButton.classList.add('mic-active');
+            });
+
+            socket.on('disconnect', () => {
+                updateStatus('Disconnected from server.', true);
+                micButton.disabled = true;
+                micButton.classList.remove('mic-active');
+            });
+            
+            socket.on('status', (data) => {
+                if (micButton.disabled === false) { 
+                    updateStatus(data.message);
+                }
+            });
+
+            socket.on('transcript', (data) => {
+                userTranscript.textContent = data.transcript;
+            });
+            
+            socket.on('error', (data) => {
+                updateStatus(`ERROR: ${data.message}`, true);
+                console.error('Server Error:', data.message);
+            });
+
+            socket.on('response_text', (data) => {
+                const { text } = data;
+                appendMessage('user', userTranscript.textContent);
+                appendMessage('agent', text);
+                userTranscript.textContent = '';
+                updateStatus('Generating audio...');
+            });
+
+            socket.on('audio_ready', (data) => {
+                console.log("Audio ready:", data);
+                playAudioFromUrl(data.audio_url, data.duration);
+            });
+            
+            socket.on('memory_audio_ready', (data) => {
+                console.log(`Memory audio ready for M-${data.memory_id}:`, data);
+                playAudioFromUrl(data.audio_url, data.duration);
+            });
+            
+            // Listen for memory scene response
+            socket.on('memory_scene', (data) => {
+                const { text, memory_id } = data;
+                console.log(`Memory scene loaded: M-${memory_id}`);
+                // Clear conversation history when loading new memory
+                conversationHistory.innerHTML = '';
+                appendMessage('system', `[Memory ${memory_id} Loaded]`);
+                appendMessage('agent', text);
+                updateStatus('Generating audio...');
+            });
+        }
+
+        function updateStatus(message, isError = false) {
+            statusMessage.textContent = message;
+            statusMessage.className = `text-center mb-6 p-3 rounded-lg font-semibold ${isError ? 'bg-red-100 text-red-800' : 'bg-indigo-100 text-indigo-800'}`;
+        }
+
+        function appendMessage(role, text) {
+            const div = document.createElement('div');
+            let className = 'p-3 rounded-lg shadow-sm ';
+            if (role === 'user') {
+                className += 'bg-indigo-50 text-right ml-auto';
+            } else if (role === 'system') {
+                className += 'bg-yellow-50 text-center mx-auto text-yellow-800';
+            } else {
+                className += 'bg-gray-200 mr-auto';
+            }
+            div.className = className;
+            div.innerHTML = `<span class="font-bold text-xs block mb-1">${role.toUpperCase()}</span>${text}`;
+            conversationHistory.appendChild(div);
+            conversationHistory.scrollTop = conversationHistory.scrollHeight;
+        }
+        
+        //Scenario Handling
+        function handleScenarioClick(e) {
+            const button = e.currentTarget;
+            const memoryId = button.getAttribute('data-memory-id');
+            
+            // Prevent changing memory while recording or speaking
+            if (isRecording || micButton.disabled) {
+                updateStatus('Please wait until current operation completes', true);
+                return;
+            }
+            
+            // Deselect logic: if the button is already active, turn it off
+            if (button.classList.contains('active')) {
+                activeMemoryId = null;
+                button.classList.remove('active');
+                activeMemoryDisplay.textContent = 'No Memory Active';
+                console.log('Memory Deselected.');
+                
+                // Clear conversation history
+                conversationHistory.innerHTML = '';
+                
+                // Notify server to reset
+                socket.emit('reset_memory');
+            } else {
+                // Select logic: clear all other active buttons
+                scenarioButtons.forEach(btn => btn.classList.remove('active'));
+                
+                // Set the new active button and ID
+                activeMemoryId = memoryId;
+                button.classList.add('active');
+                activeMemoryDisplay.textContent = `Active Memory: M-${memoryId}`;
+                console.log(`Memory Selected: M-${memoryId}`);
+                
+                // Disable all scenario buttons during loading
+                scenarioButtons.forEach(btn => btn.disabled = true);
+                updateStatus('Loading memory scene...');
+                
+                // Send to server to load memory
+                socket.emit('load_memory', { memory_id: memoryId });
+                
+                // Re-enable buttons after a short delay
+                setTimeout(() => {
+                    scenarioButtons.forEach(btn => btn.disabled = false);
+                }, 1000);
+            }
+        }
+
+        window.onload = () => {
+            setupSocket();
+            micButton.addEventListener('click', initMicrophone);
+            
+            // Add listeners for scenario buttons
+            scenarioButtons.forEach(button => {
+                button.addEventListener('click', handleScenarioClick);
+            });
+        };
+    </script>
+</body>
+</html>
